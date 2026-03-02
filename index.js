@@ -1,6 +1,6 @@
 require("dotenv").config();
 
-const { Telegraf, Scenes, session } = require("telegraf");
+const { Telegraf } = require("telegraf");
 const https = require("https");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -11,9 +11,11 @@ const GITHUB_FILE = process.env.GITHUB_FILE || "index.html";
 const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
 
 if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN");
-if (!ALLOWED_USER_IDS.length) throw new Error("Missing ALLOWED_USER_ID");
 if (!GITHUB_TOKEN) throw new Error("Missing GITHUB_TOKEN");
 if (!GITHUB_REPO) throw new Error("Missing GITHUB_REPO");
+
+// Track who is waiting to enter a value
+const waitingForInput = new Set();
 
 function githubRequest(method, path, body) {
   return new Promise((resolve, reject) => {
@@ -89,31 +91,39 @@ async function updateFile(newValue) {
   }
 }
 
-// Telegram bot
-const solScene = new Scenes.BaseScene("SOL_SCENE");
+const bot = new Telegraf(BOT_TOKEN);
 
-solScene.enter(async (ctx) => {
+bot.command("start", (ctx) => {
+  ctx.reply("👋 Send /sol to update the SOL requirement.");
+});
+
+bot.command("sol", async (ctx) => {
+  if (!ALLOWED_USER_IDS.includes(ctx.from.id)) return ctx.reply("Unauthorized.");
+
   try {
     const { content } = await getFile();
     const current = extractSol(content);
+    waitingForInput.add(ctx.from.id);
     await ctx.reply(
-      `Current SOL requirement: *${current} SOL*\n\nReply with the new value (e.g. \`3\`, \`8\`, \`1.5\`):`,
+      `Current SOL requirement: *${current} SOL*\n\nReply with the new value (e.g. 3, 8, 1.5):`,
       { parse_mode: "Markdown" }
     );
   } catch (err) {
     await ctx.reply(`❌ Failed to fetch file: ${err.message}`);
-    await ctx.scene.leave();
   }
 });
 
-solScene.on("text", async (ctx) => {
+bot.on("text", async (ctx) => {
+  if (!ALLOWED_USER_IDS.includes(ctx.from.id)) return ctx.reply("Unauthorized.");
+  if (!waitingForInput.has(ctx.from.id)) return;
+
   const input = ctx.message.text.trim();
 
   if (!/^\d+(\.\d+)?$/.test(input)) {
-    return ctx.reply("Invalid. Send a number like `2`, `3.5`, etc.", {
-      parse_mode: "Markdown",
-    });
+    return ctx.reply("Invalid. Send a number like 2, 3.5, etc.");
   }
+
+  waitingForInput.delete(ctx.from.id);
 
   try {
     await ctx.reply("⏳ Updating...");
@@ -124,30 +134,7 @@ solScene.on("text", async (ctx) => {
   } catch (err) {
     await ctx.reply(`❌ Error: ${err.message}`);
   }
-
-  await ctx.scene.leave();
 });
-
-solScene.command("cancel", async (ctx) => {
-  await ctx.reply("Cancelled.");
-  await ctx.scene.leave();
-});
-
-const stage = new Scenes.Stage([solScene]);
-const bot = new Telegraf(BOT_TOKEN);
-
-bot.use(session());
-bot.use(stage.middleware());
-
-bot.use((ctx, next) => {
-  if (!ALLOWED_USER_IDS.includes(ctx.from?.id)) return ctx.reply("Unauthorized.");
-  return next();
-});
-
-bot.command("sol", (ctx) => ctx.scene.enter("SOL_SCENE"));
-bot.command("start", (ctx) =>
-  ctx.reply("👋 Send /sol to update the SOL requirement in your HTML file.")
-);
 
 bot.launch();
 console.log("Bot is running...");
