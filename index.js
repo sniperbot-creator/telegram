@@ -4,14 +4,14 @@ const { Telegraf, Scenes, session } = require("telegraf");
 const https = require("https");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const ALLOWED_USER_ID = parseInt(process.env.ALLOWED_USER_ID);
+const ALLOWED_USER_IDS = process.env.ALLOWED_USER_ID.split(",").map((id) => parseInt(id.trim()));
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 const GITHUB_FILE = process.env.GITHUB_FILE || "index.html";
 const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
 
 if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN");
-if (!ALLOWED_USER_ID) throw new Error("Missing ALLOWED_USER_ID");
+if (!ALLOWED_USER_IDS.length) throw new Error("Missing ALLOWED_USER_ID");
 if (!GITHUB_TOKEN) throw new Error("Missing GITHUB_TOKEN");
 if (!GITHUB_REPO) throw new Error("Missing GITHUB_REPO");
 
@@ -140,7 +140,7 @@ bot.use(session());
 bot.use(stage.middleware());
 
 bot.use((ctx, next) => {
-  if (ctx.from?.id !== ALLOWED_USER_ID) return ctx.reply("Unauthorized.");
+  if (!ALLOWED_USER_IDS.includes(ctx.from?.id)) return ctx.reply("Unauthorized.");
   return next();
 });
 
