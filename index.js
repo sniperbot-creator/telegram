@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const { Telegraf } = require("telegraf");
 const https = require("https");
+const http = require("http");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ALLOWED_USER_IDS = process.env.ALLOWED_USER_ID.split(",").map((id) => parseInt(id.trim()));
@@ -134,6 +135,15 @@ bot.on("text", async (ctx) => {
   } catch (err) {
     await ctx.reply(`❌ Error: ${err.message}`);
   }
+});
+
+// HTTP server so Render detects an open port
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end("Bot is running.");
+}).listen(PORT, () => {
+  console.log(`HTTP server listening on port ${PORT}`);
 });
 
 bot.launch();
