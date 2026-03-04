@@ -10,13 +10,11 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 const GITHUB_FILE = process.env.GITHUB_FILE || “index.html”;
 const GITHUB_BRANCH = process.env.GITHUB_BRANCH || “main”;
-const SERVICE_URL = process.env.SERVICE_URL || “https://telegram-vudh.onrender.com”;
 
 if (!BOT_TOKEN) throw new Error(“Missing BOT_TOKEN”);
 if (!GITHUB_TOKEN) throw new Error(“Missing GITHUB_TOKEN”);
 if (!GITHUB_REPO) throw new Error(“Missing GITHUB_REPO”);
 
-// Track who is waiting to enter a value
 const waitingForInput = new Set();
 
 function githubRequest(method, path, body) {
@@ -104,7 +102,6 @@ ctx.reply(“👋 Send /sol to update the SOL requirement.”);
 
 bot.command(“sol”, async (ctx) => {
 if (!ALLOWED_USER_IDS.includes(ctx.from.id)) return ctx.reply(“Unauthorized.”);
-
 try {
 const { content } = await getFile();
 const current = extractSol(content);
@@ -152,24 +149,37 @@ console.log(`HTTP server listening on port ${PORT}`);
 
 // Self-ping every 4 minutes to prevent Render free tier from sleeping
 setInterval(() => {
-https.get(SERVICE_URL, (res) => {
+https.get(“https://telegram-vudh.onrender.com”, (res) => {
 console.log(`[keep-alive] ping sent, status: ${res.statusCode}`);
 }).on(“error”, (err) => {
 console.error(`[keep-alive] ping failed: ${err.message}`);
 });
 }, 4 * 60 * 1000);
 
-// Clear any stale webhook before starting polling
-bot.telegram.deleteWebhook({ drop_pending_updates: true })
-.then(() => {
-bot.launch({ dropPendingUpdates: true });
+// Launch with retry logic to handle 409 conflicts
+async function launchBot(retries = 10, delayMs = 3000) {
+for (let i = 0; i < retries; i++) {
+try {
+console.log(`[bot] Attempting to start (attempt ${i + 1})...`);
+await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+await bot.launch({ dropPendingUpdates: true });
 console.log(“Bot is running…”);
-})
-.catch((err) => {
-console.error(“Failed to delete webhook:”, err.message);
-bot.launch({ dropPendingUpdates: true });
-console.log(“Bot is running (webhook delete skipped)…”);
-});
+return;
+} catch (err) {
+if (err.response && err.response.error_code === 409) {
+console.warn(`[bot] 409 conflict, retrying in ${delayMs / 1000}s...`);
+await new Promise((res) => setTimeout(res, delayMs));
+} else {
+console.error(”[bot] Fatal error:”, err.message);
+process.exit(1);
+}
+}
+}
+console.error(”[bot] Could not start after multiple attempts. Exiting.”);
+process.exit(1);
+}
+
+launchBot();
 
 process.once(“SIGINT”, () => bot.stop(“SIGINT”));
 process.once(“SIGTERM”, () => bot.stop(“SIGTERM”));
