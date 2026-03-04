@@ -146,7 +146,8 @@ http.createServer((req, res) => {
   console.log(`HTTP server listening on port ${PORT}`);
 });
 
-bot.launch();
+// dropPendingUpdates: true forces this instance to take over as the sole poller
+bot.launch({ dropPendingUpdates: true });
 console.log("Bot is running...");
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
